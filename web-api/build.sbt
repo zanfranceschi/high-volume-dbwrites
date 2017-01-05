@@ -15,3 +15,4 @@ libraryDependencies ++= Seq(
 	"com.rabbitmq" % "amqp-client" % "4.0.0"
 )
 
+// feature

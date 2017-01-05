@@ -12,13 +12,12 @@ import play.api.mvc._
 import play.api.libs.json._
 import slick.driver.JdbcProfile
 import slick.driver.PostgresDriver.api._
-
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Await
+import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
 @Singleton
-class HomeController @Inject() (
+class ThingsController @Inject() (
 								   dbConfigProvider: DatabaseConfigProvider,
 								   configuration: Configuration,
 							   		connection: Connection) extends Controller {
@@ -30,8 +29,30 @@ class HomeController @Inject() (
 		Ok("curl -v -H \"Content-Type: application/json\" -d '{\"name\":\"test\"}' http://localhost:9000")
 	}
 	
-	def get = Action.async {
-		db.run(ThingsDAO.things.filter(t => t.name like "%abcd%").result) map { t => Ok(Json.toJson(t)) }
+	def get = Action.async { implicit request =>
+		
+		if (!request.queryString.contains("q")) {
+			Future {
+				val json = JsObject(Seq(
+					"message" -> JsString("you must provide the 'q' query string"),
+					"_links" -> JsObject(Seq(
+						"example" -> JsString("http://localhost:9000?q=test")))))
+				BadRequest(Json.prettyPrint(json))
+			} map { r => r }
+		}
+		else {
+			val q = request.getQueryString("q").get
+			
+			db.run(ThingsDAO.things.filter(t => t.name like s"%${q}%").take(10).result) map { t =>
+				if (t.size > 0) {
+					Ok(Json.prettyPrint(Json.toJson(t)))
+				}
+				else {
+					NotFound(Json.prettyPrint(JsObject(Seq(
+						"message" -> JsString(s"nothing found for '${q}'")))))
+				}
+			}
+		}
 	}
 	
 	def post = Action(parse.json[Thing]) { request =>
@@ -43,7 +64,7 @@ class HomeController @Inject() (
 		
 		channel.confirmSelect()
 		
-		Logger.info(Json.toJson(responseThing).toString)
+		Logger.debug(Json.toJson(responseThing).toString)
 		
 		channel.basicPublish(
 			Config.amqp.exchange,
@@ -52,14 +73,21 @@ class HomeController @Inject() (
 			Json.toJson(responseThing).toString.getBytes
 		)
 		
-		Accepted(Json.toJson(responseThing)).withHeaders("Location" -> s"/things/${responseThing.id.get}")
+		channel.waitForConfirms()
+		channel.close()
+
+		Accepted(Json.toJson(responseThing))
+			.withHeaders("Location" -> s"/things/${responseThing.id.get}")
 	}
 	
 	def getThing(id: String) = Action {
 		val result = Await.result(db.run(ThingsDAO.things.filter(t => t.id === id).result), 60 seconds)
-		if (result.isEmpty)
-			NotFound("not found")
-		else
+		if (result.isEmpty) {
+			NotFound(Json.prettyPrint(JsObject(Seq(
+				"message" -> JsString("thing not found")))))
+		}
+		else {
 			Ok(Json.toJson(result.head))
+		}
 	}
 }

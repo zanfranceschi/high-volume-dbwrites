@@ -1,6 +1,0 @@
-GET   /   controllers.HomeController.get
-POST  /   controllers.HomeController.post
-
-GET   /curl   controllers.HomeController.curl
-
-GET /things/:id  controllers.HomeController.getThing(id: String)

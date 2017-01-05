@@ -1,0 +1,9 @@
+GET   /   controllers.ThingsController.get
+POST  /   controllers.ThingsController.post
+
+GET   /curl   controllers.ThingsController.curl
+
+GET /things      controllers.ThingsController.get
+GET /things/      controllers.ThingsController.get
+POST  /things   controllers.ThingsController.post
+GET /things/:id  controllers.ThingsController.getThing(id: String)
